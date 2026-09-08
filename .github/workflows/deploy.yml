@@ -1,14 +1,14 @@
-name: Build, Push, and Deploy to EKS
+name: CI/CD Pipeline to EKS
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
+    - name: Checkout Code
       uses: actions/checkout@v3
 
     - name: Configure AWS Credentials
@@ -16,13 +16,13 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ secrets.AWS_REGION }}
 
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, tag, and push image to Amazon ECR
+    - name: Build, Tag, and Push Docker Image to ECR
       env:
         REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         REPOSITORY: simple-login-app
@@ -31,8 +31,11 @@ jobs:
         docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
         docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
 
-    - name: Update Kubeconfig
-      run: aws eks update-kubeconfig --name <your-cluster-name> --region us-east-1
+    - name: Update Kubernetes Kubeconfig
+      run: |
+        aws eks update-kubeconfig --name ${{ secrets.CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
 
-    - name: Restart Kubernetes Deployment
-      run: kubectl rollout restart deployment/simple-login-app
+    - name: Deploy Application to EKS
+      run: |
+        kubectl apply -f deployment.yaml
+        kubectl rollout restart deployment/simple-login-app
