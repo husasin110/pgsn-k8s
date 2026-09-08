@@ -1,45 +1,53 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, render_template_string, request, redirect, url_for
 import boto3
-from boto3.dynamodb.conditions import key
+from boto3.dynamodb.conditions import Key
 
 app = Flask(__name__)
+
+# Initialize DynamoDB client/resource
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-table = dynamodb.Table('Users')
+table = dynamodb.Table('pgsn')
 
 HTML_TEMPLATE = '''
-<!doctype html>
-<title>Login Application</title>
-<div style="font-family: Arial; margin: 50px auto; width: 300px;">
-  <h2>Login</h2>
-  {% if message %}
-    <p style="color: red;">{{ message }}</p>
-  {% endif %}
-  <form method="post">
-    <label>Username:</label><br>
-    <input type="text" name="username" required style="width: 100%; margin-bottom: 10px;"><br>
-    <label>Password:</label><br>
-    <input type="password" name="password" required style="width: 100%; margin-bottom: 10px;"><br>
-    <button type="submit" style="width: 100%; padding: 8px;">Login</button>
-  </form>
-</div>
+<!DOCTYPE html>
+<html>
+<head><title>Login Page</title></head>
+<body style="font-family: Arial; margin: 50px;">
+    <h2>Login Portal</h2>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <form method="POST">
+        <label>Username (Cluster):</label><br>
+        <input type="text" name="username" required><br><br>
+        <label>Password:</label><br>
+        <input type="password" name="password" required><br><br>
+        <button type="submit">Login</button>
+    </form>
+</body>
+</html>
 '''
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    message = ''
+    error = None
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         
-        response = table.get_item(Key={'username': username})
-        user = response.get('Item')
-        
-        if user and user.get('password') == password:
-            return f"<h2>Welcome, {username}! Login successful.</h2>"
-        else:
-            message = "Invalid username or password."
+        try:
+            # Query DynamoDB using the corrected Key capitalization
+            response = table.get_item(Key={'cluster': username})
+            user = response.get('Item')
             
-    return render_template_string(HTML_TEMPLATE, message=message)
+            if user and user.get('password') == password:
+                return f"<h2>Welcome, {username}! Login successful.</h2>"
+            else:
+                error = "Invalid username or password."
+        except Exception as e:
+            error = f"Database error: {str.lower(str(e))}"
+            
+    return render_template_string(HTML_TEMPLATE, error=error)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
