@@ -1,11 +1,16 @@
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, render_template_string, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 import boto3
-from boto3.dynamodb.conditions import Key
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# Initialize DynamoDB client/resource
-dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+# Initialize DynamoDB resource pointing directly to the Interface Endpoint
+dynamodb = boto3.resource(
+    'dynamodb',
+    region_name='us-east-1',
+    endpoint_url='https://vpce-0d5107b23891af2b9-sow3v4uq.dynamodb.us-east-1.vpce.amazonaws.com'
+)
 table = dynamodb.Table('pgsn')
 
 HTML_TEMPLATE = '''
@@ -34,19 +39,18 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        
+
         try:
-            # Query DynamoDB using the corrected Key capitalization
             response = table.get_item(Key={'cluster': username})
             user = response.get('Item')
-            
+
             if user and user.get('password') == password:
                 return f"<h2>Welcome, {username}! Login successful.</h2>"
             else:
                 error = "Invalid username or password."
         except Exception as e:
-            error = f"Database error: {str.lower(str(e))}"
-            
+            error = f"Database error: {str(e)}"
+
     return render_template_string(HTML_TEMPLATE, error=error)
 
 if __name__ == '__main__':

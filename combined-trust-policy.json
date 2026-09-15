@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::957950410212:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/278DC336F4B948C5ADE4A471BCE99D85"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.us-east-1.amazonaws.com/id/278DC336F4B948C5ADE4A471BCE99D85:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "oidc.eks.us-east-1.amazonaws.com/id/278DC336F4B948C5ADE4A471BCE99D85:sub": [
+            "system:serviceaccount:kube-system:aws-load-balancer-controller",
+            "system:serviceaccount:default:app-dynamo-sa"
+          ]
+        }
+      }
+    }
+  ]
+}

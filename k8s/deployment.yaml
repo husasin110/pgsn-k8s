@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: simple-login-app
+  namespace: default
 spec:
   replicas: 2
   selector:
@@ -12,40 +13,46 @@ spec:
       labels:
         app: simple-login-app
     spec:
+      serviceAccountName: app-dynamo-sa
       containers:
-      - name: simple-login-app
-        image: 957950410212.dkr.ecr.us-east-1.amazonaws.com/simple-login-app:latest
+      - name: web
+        image: 957950410212.dkr.ecr.us-east-1.amazonaws.com/simple-login-app:IMAGE_TAG
         ports:
         - containerPort: 5000
+        env:
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: DYNAMODB_TABLE_NAME
+          value: "pgsn"
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: simple-login-service
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     app: simple-login-app
   ports:
-  - port: 80
-    targetPort: 5000
+    - port: 80
+      targetPort: 5000
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: simple-login-ingress
   annotations:
-    kubernetes.io/ingress.class: "alb"
     alb.ingress.kubernetes.io/scheme: "internet-facing"
     alb.ingress.kubernetes.io/target-type: "ip"
 spec:
+  ingressClassName: alb
   rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: simple-login-service
-            port:
-              number: 80
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: simple-login-service
+                port:
+                  number: 80
