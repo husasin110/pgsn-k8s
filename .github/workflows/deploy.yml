@@ -6,14 +6,19 @@ on:
       - main
 
 jobs:
-  deploy:
+  # ==========================================
+  # Stage 1: Continuous Integration (CI)
+  # Builds Docker image and pushes to Amazon ECR
+  # ==========================================
+  build-and-push:
+    name: "CI: Build & Push Image"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials via Access Keys
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -34,6 +39,26 @@ jobs:
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
           docker push $REGISTRY/$REPOSITORY:latest
 
+  # ==========================================
+  # Stage 2: Continuous Deployment (CD)
+  # Deploys manifests and waits for rollout
+  # ==========================================
+  deploy-to-eks:
+    name: "CD: Deploy to EKS"
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Update Kubeconfig
         run: |
           aws eks update-kubeconfig --name ${{ secrets.CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
@@ -52,8 +77,35 @@ jobs:
         run: |
           kubectl rollout status deployment/simple-login-app -n default --timeout=120s
 
-      - name: Smoke Test Endpoint
+  # ==========================================
+  # Stage 3: Verification & Smoke Test
+  # Validates ALB ingress and app response
+  # ==========================================
+  smoke-test:
+    name: "Verification: Smoke Test"
+    needs: deploy-to-eks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update Kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.CLUSTER_NAME }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Run ALB Smoke Test
         run: |
           ALB_DNS=$(kubectl get ingress simple-login-ingress -n default -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          echo "Testing ALB: http://$ALB_DNS/"
+          echo "Target ALB: http://$ALB_DNS/"
+          
+          if [ -z "$ALB_DNS" ]; then
+            echo "Error: Ingress hostname not yet allocated."
+            exit 1
+          fi
+
           curl -s -f -X POST "http://$ALB_DNS/" -d "username=admin&password=admin123" | grep -q "Login successful" && echo "Smoke test PASSED!" || echo "Smoke test completed."
